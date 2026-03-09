@@ -1,5 +1,12 @@
 export type TaskStatus = 'pending' | 'snoozed' | 'completed';
 
+export interface LocationReminder {
+  address: string;
+  lat: number;
+  lng: number;
+  radiusMeters?: number;
+}
+
 export interface Task {
   id: string;
   instruction: string;
@@ -8,6 +15,7 @@ export interface Task {
   createdAt: number;
   completedAt: number | null;
   urgent?: boolean;
+  locationReminder?: LocationReminder;
 }
 
 const OVERDUE_HOURS = 24;

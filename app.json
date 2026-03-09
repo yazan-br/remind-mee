@@ -12,7 +12,8 @@
       "backgroundColor": "#0f0f0f"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.remindme"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,10 +23,31 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.remindme"
+      "package": "com.anonymous.remindme",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "./plugins/next-widget",
+      "expo-background-task",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Next uses your location to remind you when you arrive at a saved address.",
+          "locationWhenInUsePermission": "Next uses your location to remind you when you arrive at a saved address.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-notifications"
+    ]
   }
 }

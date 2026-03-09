@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Task, getTaskEmoji, isUrgent } from './src/shared/types';
+import { LocationReminder, Task, getTaskEmoji, isUrgent } from './src/shared/types';
 import {
   addTask,
   completeTask,
@@ -20,6 +20,9 @@ import {
   snoozeTask,
 } from './src/services/tasks';
 import { updateWidget } from './src/services/widgetBridge';
+import { geocodeAddress } from './src/services/geocoding';
+import { requestAllPermissions, setupNotifications } from './src/services/permissions';
+import { updateLocationTaskRegistration } from './src/services/locationReminder';
 
 export default function App() {
   const [nextTask, setNextTask] = useState<Task | null>(null);
@@ -29,6 +32,13 @@ export default function App() {
   const [urgent, setUrgent] = useState(false);
   const [showInput, setShowInput] = useState(false);
   const [refreshing, setRefreshing] = useState(0);
+  const [locationAddress, setLocationAddress] = useState('');
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setupNotifications().catch(() => {});
+    requestAllPermissions().catch(() => {});
+  }, []);
 
   const refresh = useCallback(async () => {
     const [task, completedList, allTasks] = await Promise.all([
@@ -38,6 +48,7 @@ export default function App() {
     ]);
     setNextTask(task);
     setCompleted(completedList);
+    await updateLocationTaskRegistration();
     const json = JSON.stringify(allTasks);
     updateWidget(
       task?.instruction ?? null,
@@ -68,10 +79,28 @@ export default function App() {
   const handleAdd = async () => {
     const text = input.trim();
     if (!text) return;
-    await addTask(text, urgent);
+    setLocationError(null);
+    let locationReminder: LocationReminder | undefined;
+    if (locationAddress.trim()) {
+      const coords = await geocodeAddress(locationAddress);
+      if (!coords) {
+        setLocationError('Could not find address');
+        return;
+      }
+      locationReminder = {
+        address: locationAddress.trim(),
+        lat: coords.lat,
+        lng: coords.lng,
+        radiusMeters: 150,
+      };
+    }
+    await addTask(text, urgent, locationReminder);
     setInput('');
     setUrgent(false);
+    setLocationAddress('');
+    setLocationError(null);
     setShowInput(false);
+    await updateLocationTaskRegistration();
     setRefreshing((r) => r + 1);
   };
 
@@ -105,6 +134,11 @@ export default function App() {
                 )}
               </View>
               <Text style={styles.instruction}>{nextTask.instruction}</Text>
+              {nextTask.locationReminder && (
+                <Text style={styles.locationHint}>
+                  At: {nextTask.locationReminder.address}
+                </Text>
+              )}
               <View style={styles.actions}>
                 <Pressable style={[styles.button, styles.done]} onPress={handleDone}>
                   <Text style={styles.buttonText}>DONE</Text>
@@ -129,6 +163,19 @@ export default function App() {
                 autoFocus
                 returnKeyType="done"
               />
+              <TextInput
+                style={styles.input}
+                placeholder="Remind when at address (optional)"
+                placeholderTextColor="#999"
+                value={locationAddress}
+                onChangeText={(t) => {
+                  setLocationAddress(t);
+                  setLocationError(null);
+                }}
+              />
+              {locationError && (
+                <Text style={styles.errorText}>{locationError}</Text>
+              )}
               <Pressable
                 style={[styles.urgentToggle, urgent && styles.urgentToggleOn]}
                 onPress={() => setUrgent((u) => !u)}
@@ -198,7 +245,17 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#fff',
     lineHeight: 38,
-    marginBottom: 32,
+    marginBottom: 8,
+  },
+  locationHint: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 24,
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#dc2626',
+    marginTop: -8,
   },
   empty: {
     fontSize: 20,

@@ -1,5 +1,5 @@
-import { Task } from '../shared/types';
-import { loadTasks, saveTasks } from './storage';
+import { LocationReminder, Task } from '../shared/types';
+import { loadTasks, loadTasksRaw, saveTasks } from './storage';
 
 const SNOOZE_MS = 5 * 60 * 1000;
 
@@ -32,7 +32,11 @@ export async function getCompletedTasks(): Promise<Task[]> {
     .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
 }
 
-export async function addTask(instruction: string, urgent = false): Promise<Task> {
+export async function addTask(
+  instruction: string,
+  urgent = false,
+  locationReminder?: LocationReminder
+): Promise<Task> {
   const json = await loadTasks();
   const tasks: Task[] = JSON.parse(json);
   const task: Task = {
@@ -43,10 +47,28 @@ export async function addTask(instruction: string, urgent = false): Promise<Task
     createdAt: Date.now(),
     completedAt: null,
     urgent,
+    locationReminder,
   };
   tasks.push(task);
   await saveTasks(JSON.stringify(tasks));
   return task;
+}
+
+export async function getTasksWithLocation(): Promise<Task[]> {
+  const tasks = await getTasks();
+  return tasks.filter((t) => t.locationReminder != null);
+}
+
+export async function getTasksWithLocationForBackground(): Promise<Task[]> {
+  const json = await loadTasksRaw();
+  const tasks: Task[] = JSON.parse(json);
+  const now = Date.now();
+  return tasks.filter((t) => {
+    if (t.status === 'completed') return false;
+    if (t.status === 'snoozed' && t.snoozedUntil != null && t.snoozedUntil > now)
+      return false;
+    return t.locationReminder != null;
+  });
 }
 
 export async function completeTask(id: string): Promise<void> {

@@ -10,8 +10,10 @@ export function updateWidget(
   tasksJson: string,
   createdAt: number | null
 ): void {
-  if (Platform.OS === 'android' && WidgetBridge) {
-    WidgetBridge.setTasks(tasksJson);
-    WidgetBridge.updateWidget(task, taskId ?? '', isUrgent, emoji, createdAt ? createdAt : 0);
-  }
+  try {
+    if (Platform.OS === 'android' && WidgetBridge) {
+      WidgetBridge.setTasks(tasksJson);
+      WidgetBridge.updateWidget(task, taskId ?? '', isUrgent, emoji, createdAt ? createdAt : 0);
+    }
+  } catch (_) {}
 }

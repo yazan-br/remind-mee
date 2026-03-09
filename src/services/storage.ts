@@ -5,26 +5,37 @@ const KEY = '@next_tasks';
 const { WidgetBridge } = NativeModules;
 
 export async function loadTasks(): Promise<string> {
-  if (Platform.OS === 'android' && WidgetBridge?.getTasks) {
-    const fromWidget = await new Promise<string>((resolve) => {
-      WidgetBridge.getTasks((t: string | null) => resolve(t ?? '[]'));
-    });
-    if (fromWidget && fromWidget !== '[]') {
-      await AsyncStorage.setItem(KEY, fromWidget);
-      return fromWidget;
+  try {
+    if (Platform.OS === 'android' && WidgetBridge?.getTasks) {
+      const fromWidget = await new Promise<string>((resolve) => {
+        WidgetBridge.getTasks((t: string | null) => resolve(t ?? '[]'));
+      });
+      if (fromWidget && fromWidget !== '[]') {
+        await AsyncStorage.setItem(KEY, fromWidget);
+        return fromWidget;
+      }
     }
-  }
+  } catch (_) {}
   const data = await AsyncStorage.getItem(KEY);
   const json = data ?? '[]';
-  if (Platform.OS === 'android' && WidgetBridge?.setTasks && json !== '[]') {
-    WidgetBridge.setTasks(json);
-  }
+  try {
+    if (Platform.OS === 'android' && WidgetBridge?.setTasks && json !== '[]') {
+      WidgetBridge.setTasks(json);
+    }
+  } catch (_) {}
   return json;
 }
 
 export async function saveTasks(json: string): Promise<void> {
   await AsyncStorage.setItem(KEY, json);
-  if (Platform.OS === 'android' && WidgetBridge?.setTasks) {
-    WidgetBridge.setTasks(json);
-  }
+  try {
+    if (Platform.OS === 'android' && WidgetBridge?.setTasks) {
+      WidgetBridge.setTasks(json);
+    }
+  } catch (_) {}
+}
+
+export async function loadTasksRaw(): Promise<string> {
+  const data = await AsyncStorage.getItem(KEY);
+  return data ?? '[]';
 }

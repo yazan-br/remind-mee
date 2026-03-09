@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#1a1a1a">
+
+    <TextView
+        android:id="@+id/widget_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NEXT"
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:letterSpacing="0.1"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:id="@+id/widget_emoji"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/widget_urgent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="URGENT"
+            android:textSize="11sp"
+            android:textColor="#ffffff"
+            android:background="#dc2626"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_task"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textColor="#ffffff"
+        android:lineSpacingMultiplier="1.2"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/widget_done"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="DONE"
+        android:textColor="#ffffff"
+        android:background="#22c55e"
+        android:textAllCaps="false"
+        android:textStyle="bold" />
+</LinearLayout>
