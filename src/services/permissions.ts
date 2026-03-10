@@ -1,9 +1,21 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { log } from './logger';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 export async function setupNotifications(): Promise<void> {
   if (Platform.OS !== 'android') return;
+  log('Creating notification channel "reminders"');
   await Notifications.setNotificationChannelAsync('reminders', {
     name: 'Reminders',
     importance: Notifications.AndroidImportance.HIGH,

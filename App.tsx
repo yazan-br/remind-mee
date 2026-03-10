@@ -10,6 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { LocationInput } from './LocationInput';
+import { LogBox } from './src/components/LogBox';
+import { MapOverlay } from './MapOverlay';
+import { log } from './src/services/logger';
 import { LocationReminder, Task, getTaskEmoji, isUrgent } from './src/shared/types';
 import {
   addTask,
@@ -20,9 +24,11 @@ import {
   snoozeTask,
 } from './src/services/tasks';
 import { updateWidget } from './src/services/widgetBridge';
+import * as Location from 'expo-location';
 import { geocodeAddress } from './src/services/geocoding';
+import * as Notifications from 'expo-notifications';
 import { requestAllPermissions, setupNotifications } from './src/services/permissions';
-import { updateLocationTaskRegistration } from './src/services/locationReminder';
+import { checkLocationAndNotifyImmediately, updateLocationTaskRegistration } from './src/services/locationReminder';
 
 export default function App() {
   const [nextTask, setNextTask] = useState<Task | null>(null);
@@ -33,11 +39,19 @@ export default function App() {
   const [showInput, setShowInput] = useState(false);
   const [refreshing, setRefreshing] = useState(0);
   const [locationAddress, setLocationAddress] = useState('');
+  const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [showMapOverlay, setShowMapOverlay] = useState(false);
+  const [mapInitialRegion, setMapInitialRegion] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
-    setupNotifications().catch(() => {});
-    requestAllPermissions().catch(() => {});
+    log('App started');
+    setupNotifications()
+      .then(() => log('Notification channel created'))
+      .catch((e) => log('Notification setup failed: ' + String(e)));
+    requestAllPermissions()
+      .then((r) => log('Permissions: location=' + r.location + ', notifications=' + r.notifications))
+      .catch((e) => log('Permission request failed: ' + String(e)));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -82,7 +96,15 @@ export default function App() {
     setLocationError(null);
     let locationReminder: LocationReminder | undefined;
     if (locationAddress.trim()) {
-      const coords = await geocodeAddress(locationAddress);
+      let coords = locationCoords;
+      if (!coords) {
+        let bias: { lat: number; lng: number } | undefined;
+        try {
+          const pos = await Location.getLastKnownPositionAsync({ maxAge: 300000 });
+          if (pos) bias = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        } catch {}
+        coords = await geocodeAddress(locationAddress, bias);
+      }
       if (!coords) {
         setLocationError('Could not find address');
         return;
@@ -91,16 +113,26 @@ export default function App() {
         address: locationAddress.trim(),
         lat: coords.lat,
         lng: coords.lng,
-        radiusMeters: 150,
+        radiusMeters: 1200,
       };
     }
+    log('Adding task: ' + text);
     await addTask(text, urgent, locationReminder);
     setInput('');
     setUrgent(false);
     setLocationAddress('');
+    setLocationCoords(null);
     setLocationError(null);
     setShowInput(false);
     await updateLocationTaskRegistration();
+    if (locationReminder) {
+      log('Task has location - running immediate check');
+      checkLocationAndNotifyImmediately().catch((e) => log('Immediate check error: ' + String(e)));
+      setTimeout(() => {
+        log('Running delayed location check (3s)');
+        checkLocationAndNotifyImmediately().catch((e) => log('Delayed check error: ' + String(e)));
+      }, 3000);
+    }
     setRefreshing((r) => r + 1);
   };
 
@@ -120,7 +152,12 @@ export default function App() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <StatusBar style="dark" />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <View style={styles.content}>
           <Text style={styles.label}>NEXT</Text>
           {nextTask ? (
@@ -140,10 +177,10 @@ export default function App() {
                 </Text>
               )}
               <View style={styles.actions}>
-                <Pressable style={[styles.button, styles.done]} onPress={handleDone}>
+                <Pressable style={[styles.button, styles.done]} onPress={handleDone} testID="task-done">
                   <Text style={styles.buttonText}>DONE</Text>
                 </Pressable>
-                <Pressable style={[styles.button, styles.snooze]} onPress={handleSnooze}>
+                <Pressable style={[styles.button, styles.snooze]} onPress={handleSnooze} testID="task-snooze">
                   <Text style={styles.snoozeText}>5m</Text>
                 </Pressable>
               </View>
@@ -159,18 +196,22 @@ export default function App() {
                 placeholderTextColor="#999"
                 value={input}
                 onChangeText={setInput}
+                testID="task-input"
                 onSubmitEditing={handleAdd}
                 autoFocus
                 returnKeyType="done"
               />
-              <TextInput
-                style={styles.input}
-                placeholder="Remind when at address (optional)"
-                placeholderTextColor="#999"
+              <Text style={styles.locationLabel}>Location (optional)</Text>
+              <LocationInput
                 value={locationAddress}
-                onChangeText={(t) => {
-                  setLocationAddress(t);
-                  setLocationError(null);
+                onChange={(addr, coords) => {
+                  setLocationAddress(addr);
+                  setLocationCoords(coords ?? null);
+                }}
+                onError={setLocationError}
+                onOpenMap={(region) => {
+                  setMapInitialRegion(region);
+                  setShowMapOverlay(true);
                 }}
               />
               {locationError && (
@@ -179,28 +220,67 @@ export default function App() {
               <Pressable
                 style={[styles.urgentToggle, urgent && styles.urgentToggleOn]}
                 onPress={() => setUrgent((u) => !u)}
+                testID="urgent-toggle"
               >
                 <Text style={[styles.urgentToggleText, urgent && styles.urgentToggleTextOn]}>
                   Urgent
                 </Text>
               </Pressable>
-              <Pressable style={[styles.button, styles.done]} onPress={handleAdd}>
+              <Pressable style={[styles.button, styles.done]} onPress={handleAdd} testID="add-task-btn">
                 <Text style={styles.buttonText}>ADD</Text>
               </Pressable>
             </View>
           ) : (
-            <Pressable style={styles.addTrigger} onPress={() => setShowInput(true)}>
+            <Pressable style={styles.addTrigger} onPress={() => setShowInput(true)} testID="add-task-trigger">
               <Text style={styles.addTriggerText}>+ Add task</Text>
             </Pressable>
           )}
           <Pressable
+            style={styles.testNotifTrigger}
+            onPress={async () => {
+              log('Test notification tapped');
+              try {
+                log('Step 1: Checking notification permission');
+                const { status } = await Notifications.getPermissionsAsync();
+                log('Step 2: Current permission status = ' + status);
+                if (status !== 'granted') {
+                  log('Step 3: Permission not granted, requesting...');
+                  const { status: s } = await Notifications.requestPermissionsAsync();
+                  log('Step 4: Request result = ' + s);
+                  if (s !== 'granted') {
+                    log('FAILED: User denied notification permission');
+                    return;
+                  }
+                }
+                log('Step 5: Scheduling notification (trigger: null = show now)');
+                const id = await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: 'Next',
+                    body: 'Test notification',
+                    sound: true,
+                    ...(Platform.OS === 'android' && { channelId: 'reminders' }),
+                  },
+                  trigger: null,
+                });
+                log('Step 6: Notification scheduled, id=' + id);
+                log('SUCCESS: Notification should appear in status bar');
+              } catch (e) {
+                log('ERROR: ' + String(e));
+              }
+            }}
+          >
+            <Text style={styles.historyTriggerText}>Test notification</Text>
+          </Pressable>
+          <Pressable
             style={styles.historyTrigger}
             onPress={() => setShowHistory((h) => !h)}
+            testID="history-trigger"
           >
             <Text style={styles.historyTriggerText}>
               {showHistory ? 'Hide' : 'Show'} history ({completed.length})
             </Text>
           </Pressable>
+          <LogBox />
           {showHistory && completed.length > 0 && (
             <View style={styles.history}>
               {completed.slice(0, 20).map((t) => (
@@ -216,6 +296,17 @@ export default function App() {
           )}
         </View>
       </ScrollView>
+      {showMapOverlay && mapInitialRegion && (
+        <MapOverlay
+          initialRegion={mapInitialRegion}
+          onSelect={(addr, coords) => {
+            setLocationAddress(addr);
+            setLocationCoords(coords);
+            setShowMapOverlay(false);
+          }}
+          onCancel={() => setShowMapOverlay(false)}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -251,6 +342,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     marginBottom: 24,
+  },
+  locationLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
   },
   errorText: {
     fontSize: 13,
@@ -363,8 +459,12 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontWeight: '600',
   },
+  testNotifTrigger: {
+    marginTop: 24,
+    paddingVertical: 8,
+  },
   historyTrigger: {
-    marginTop: 32,
+    marginTop: 8,
     paddingVertical: 8,
   },
   historyTriggerText: {
