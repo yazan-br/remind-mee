@@ -1,0 +1,10 @@
+appId: com.anonymous.remindme
+---
+- tapOn:
+    id: add-task-trigger
+- inputText: "Task to complete"
+- tapOn: "ADD"
+- tapOn:
+    id: task-done
+- assertVisible:
+    id: add-task-trigger

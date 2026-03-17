@@ -1,0 +1,8 @@
+appId: com.anonymous.remindme
+---
+- tapOn:
+    id: add-task-trigger
+- inputText: "Test task from Maestro"
+- tapOn: "ADD"
+- assertVisible:
+    id: task-done

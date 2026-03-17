@@ -26,7 +26,7 @@ class WidgetBridgeModule(reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun updateWidget(task: String?, taskId: String, isUrgent: Boolean, emoji: String, createdAt: Double) {
+    fun updateWidget(task: String?, taskId: String, isUrgent: Boolean, emoji: String, createdAt: Double, phrase: String?) {
         val prefs = reactApplicationContext.getSharedPreferences(PREFS_NAME, 0)
         prefs.edit()
             .putString(KEY_TASK, task ?: "")
@@ -34,6 +34,7 @@ class WidgetBridgeModule(reactContext: ReactApplicationContext) :
             .putBoolean(KEY_URGENT, isUrgent)
             .putString(KEY_EMOJI, emoji)
             .putLong(KEY_CREATED_AT, createdAt.toLong())
+            .putString(KEY_PHRASE, phrase ?: "")
             .apply()
         NextWidgetProvider.updateWidget(reactApplicationContext)
     }
@@ -46,5 +47,6 @@ class WidgetBridgeModule(reactContext: ReactApplicationContext) :
         const val KEY_URGENT = "urgent"
         const val KEY_EMOJI = "emoji"
         const val KEY_CREATED_AT = "createdAt"
+        const val KEY_PHRASE = "phrase"
     }
 }

@@ -1,0 +1,9 @@
+appId: com.anonymous.remindme
+---
+- tapOn:
+    id: add-task-trigger
+- inputText: "Buy milk"
+- hideKeyboard
+- tapOn: "ADD"
+- assertVisible:
+    id: task-done

@@ -1,0 +1,10 @@
+appId: com.anonymous.remindme
+---
+- tapOn:
+    id: add-task-trigger
+- tapOn: "Map"
+- extendedWaitUntil:
+    visible: "Done"
+    timeout: 10000
+- tapOn: "Done"
+- assertVisible: "ADD"

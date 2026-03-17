@@ -38,14 +38,20 @@ class NextWidgetProvider : AppWidgetProvider() {
         ) {
             val prefs = context.getSharedPreferences(WidgetBridgeModule.PREFS_NAME, 0)
             val task = prefs.getString(WidgetBridgeModule.KEY_TASK, null) ?: ""
+            val phrase = prefs.getString(WidgetBridgeModule.KEY_PHRASE, null) ?: ""
             val isUrgent = prefs.getBoolean(WidgetBridgeModule.KEY_URGENT, false)
             val emoji = prefs.getString(WidgetBridgeModule.KEY_EMOJI, "") ?: ""
             val taskId = prefs.getString(WidgetBridgeModule.KEY_TASK_ID, "") ?: ""
+            val displayText = when {
+                task.isNotEmpty() -> task
+                phrase.isNotEmpty() -> phrase
+                else -> "What is the next action?"
+            }
 
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             views.setTextViewText(R.id.widget_label, "NEXT")
             views.setTextViewText(R.id.widget_emoji, emoji)
-            views.setTextViewText(R.id.widget_task, if (task.isEmpty()) "What is the next action?" else task)
+            views.setTextViewText(R.id.widget_task, displayText)
             views.setViewVisibility(R.id.widget_urgent, if (isUrgent) android.view.View.VISIBLE else android.view.View.GONE)
 
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)

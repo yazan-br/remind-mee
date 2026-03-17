@@ -1,6 +1,9 @@
-import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { StatusBar } from "expo-status-bar";
+import { useCallback, useEffect, useState } from "react";
+import { AppState } from "react-native";
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,12 +12,9 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { LocationInput } from './LocationInput';
-import { LogBox } from './src/components/LogBox';
-import { MapOverlay } from './MapOverlay';
-import { log } from './src/services/logger';
-import { LocationReminder, Task, getTaskEmoji, isUrgent } from './src/shared/types';
+} from "react-native";
+import { log } from "./src/services/logger";
+import { Task, getTaskEmoji, isUrgent } from "./src/shared/types";
 import {
   addTask,
   completeTask,
@@ -22,36 +22,73 @@ import {
   getCompletedTasks,
   getNextTask,
   snoozeTask,
-} from './src/services/tasks';
-import { updateWidget } from './src/services/widgetBridge';
-import * as Location from 'expo-location';
-import { geocodeAddress } from './src/services/geocoding';
-import * as Notifications from 'expo-notifications';
-import { requestAllPermissions, setupNotifications } from './src/services/permissions';
-import { checkLocationAndNotifyImmediately, updateLocationTaskRegistration } from './src/services/locationReminder';
+} from "./src/services/tasks";
+import { updateWidget } from "./src/services/widgetBridge";
+import {
+  requestAllPermissions,
+  setupNotifications,
+} from "./src/services/permissions";
+
+const BANNER_IMAGES = [
+  require("./assets/do-it/sddefault.jpg"),
+  require("./assets/do-it/maxresdefault.jpg"),
+  require("./assets/do-it/mqdefault.jpg"),
+  require("./assets/do-it/hqdefault.jpg"),
+  require("./assets/do-it/wallpaper2you_54615.png"),
+  require("./assets/do-it/desktop-wallpaper-shia-labeouf-s-intense-motivational-speech-just-do-it-thumbnail.jpg"),
+  require("./assets/do-it/19-196232_shia-labeouf-just-do-it-png-transparent-png.png"),
+  require("./assets/do-it/images.jpeg"),
+  require("./assets/do-it/61ThvjyXp8L.png"),
+  require("./assets/do-it/205030145a1abcaed4efe27133eb23c6.340x255x61.gif"),
+];
+
+const DONE_SOUND = require("./assets/do-it/done-sound.mp3");
+
+const MOTIVATION_PHRASES = [
+  "Your husband is proud of you.",
+  "Being your husband is my greatest honor, but watching the woman you've become is my greatest joy. I don't just love you; I am in awe of you.",
+  "The world sees your grace, but I see your strength. I am so deeply proud to stand by your side and call myself your husband.",
+  "You are my greatest pride. Every day, you give me a thousand new reasons to be proud that I am yours.",
+  "I see the things you do when no one is looking—the kindness, the resilience, the heart. Your husband sees it all, and he couldn't be prouder.",
+  "Carol, you are the breath in my lungs and the quiet in my soul. If my heart stops, I will find peace; but if I lose you, the world itself would break, and no hand could ever mend the pieces of who I used to be.",
+];
+
+function getPhraseForNow(): string {
+  const idx = Math.floor(Date.now() / 5000) % MOTIVATION_PHRASES.length;
+  return MOTIVATION_PHRASES[idx];
+}
 
 export default function App() {
+  const donePlayer = useAudioPlayer(DONE_SOUND);
   const [nextTask, setNextTask] = useState<Task | null>(null);
   const [completed, setCompleted] = useState<Task[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [urgent, setUrgent] = useState(false);
   const [showInput, setShowInput] = useState(false);
   const [refreshing, setRefreshing] = useState(0);
-  const [locationAddress, setLocationAddress] = useState('');
-  const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [showMapOverlay, setShowMapOverlay] = useState(false);
-  const [mapInitialRegion, setMapInitialRegion] = useState<{ lat: number; lng: number } | null>(null);
+  const [bannerIndex, setBannerIndex] = useState(0);
 
   useEffect(() => {
-    log('App started');
+    const id = setInterval(() => {
+      setBannerIndex((i) => (i + 1) % BANNER_IMAGES.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    updateWidget(null, null, false, "🌱", "[]", null, getPhraseForNow());
+  }, []);
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true });
+    log("App started");
     setupNotifications()
-      .then(() => log('Notification channel created'))
-      .catch((e) => log('Notification setup failed: ' + String(e)));
+      .then(() => log("Notification channel created"))
+      .catch((e) => log("Notification setup failed: " + String(e)));
     requestAllPermissions()
-      .then((r) => log('Permissions: location=' + r.location + ', notifications=' + r.notifications))
-      .catch((e) => log('Permission request failed: ' + String(e)));
+      .then((r) => log("Permissions: notifications=" + r.notifications))
+      .catch((e) => log("Permission request failed: " + String(e)));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -62,15 +99,16 @@ export default function App() {
     ]);
     setNextTask(task);
     setCompleted(completedList);
-    await updateLocationTaskRegistration();
     const json = JSON.stringify(allTasks);
+    const phrase = task ? null : getPhraseForNow();
     updateWidget(
       task?.instruction ?? null,
       task?.id ?? null,
       task ? isUrgent(task) : false,
-      task ? getTaskEmoji(task) : '🌱',
+      task ? getTaskEmoji(task) : "🌱",
       json,
-      task?.createdAt ?? null
+      task?.createdAt ?? null,
+      phrase,
     );
   }, []);
 
@@ -78,8 +116,24 @@ export default function App() {
     refresh();
   }, [refresh, refreshing]);
 
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!nextTask) refresh();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [nextTask, refresh]);
+
   const handleDone = async () => {
     if (!nextTask) return;
+    donePlayer.seekTo(0);
+    donePlayer.play();
     await completeTask(nextTask.id);
     setRefreshing((r) => r + 1);
   };
@@ -93,46 +147,11 @@ export default function App() {
   const handleAdd = async () => {
     const text = input.trim();
     if (!text) return;
-    setLocationError(null);
-    let locationReminder: LocationReminder | undefined;
-    if (locationAddress.trim()) {
-      let coords = locationCoords;
-      if (!coords) {
-        let bias: { lat: number; lng: number } | undefined;
-        try {
-          const pos = await Location.getLastKnownPositionAsync({ maxAge: 300000 });
-          if (pos) bias = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        } catch {}
-        coords = await geocodeAddress(locationAddress, bias);
-      }
-      if (!coords) {
-        setLocationError('Could not find address');
-        return;
-      }
-      locationReminder = {
-        address: locationAddress.trim(),
-        lat: coords.lat,
-        lng: coords.lng,
-        radiusMeters: 1200,
-      };
-    }
-    log('Adding task: ' + text);
-    await addTask(text, urgent, locationReminder);
-    setInput('');
+    log("Adding task: " + text);
+    await addTask(text, urgent);
+    setInput("");
     setUrgent(false);
-    setLocationAddress('');
-    setLocationCoords(null);
-    setLocationError(null);
     setShowInput(false);
-    await updateLocationTaskRegistration();
-    if (locationReminder) {
-      log('Task has location - running immediate check');
-      checkLocationAndNotifyImmediately().catch((e) => log('Immediate check error: ' + String(e)));
-      setTimeout(() => {
-        log('Running delayed location check (3s)');
-        checkLocationAndNotifyImmediately().catch((e) => log('Delayed check error: ' + String(e)));
-      }, 3000);
-    }
     setRefreshing((r) => r + 1);
   };
 
@@ -141,15 +160,16 @@ export default function App() {
     const now = new Date();
     const today = now.toDateString();
     const taskDay = d.toDateString();
-    if (taskDay === today) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (taskDay === today)
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
   };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
       <StatusBar style="dark" />
       <ScrollView
@@ -171,16 +191,19 @@ export default function App() {
                 )}
               </View>
               <Text style={styles.instruction}>{nextTask.instruction}</Text>
-              {nextTask.locationReminder && (
-                <Text style={styles.locationHint}>
-                  At: {nextTask.locationReminder.address}
-                </Text>
-              )}
               <View style={styles.actions}>
-                <Pressable style={[styles.button, styles.done]} onPress={handleDone} testID="task-done">
+                <Pressable
+                  style={[styles.button, styles.done]}
+                  onPress={handleDone}
+                  testID="task-done"
+                >
                   <Text style={styles.buttonText}>DONE</Text>
                 </Pressable>
-                <Pressable style={[styles.button, styles.snooze]} onPress={handleSnooze} testID="task-snooze">
+                <Pressable
+                  style={[styles.button, styles.snooze]}
+                  onPress={handleSnooze}
+                  testID="task-snooze"
+                >
                   <Text style={styles.snoozeText}>5m</Text>
                 </Pressable>
               </View>
@@ -192,7 +215,7 @@ export default function App() {
             <View style={styles.inputSection}>
               <TextInput
                 style={styles.input}
-                placeholder="Open laptop → write first paragraph"
+                placeholder="Do it"
                 placeholderTextColor="#999"
                 value={input}
                 onChangeText={setInput}
@@ -201,86 +224,58 @@ export default function App() {
                 autoFocus
                 returnKeyType="done"
               />
-              <Text style={styles.locationLabel}>Location (optional)</Text>
-              <LocationInput
-                value={locationAddress}
-                onChange={(addr, coords) => {
-                  setLocationAddress(addr);
-                  setLocationCoords(coords ?? null);
-                }}
-                onError={setLocationError}
-                onOpenMap={(region) => {
-                  setMapInitialRegion(region);
-                  setShowMapOverlay(true);
-                }}
-              />
-              {locationError && (
-                <Text style={styles.errorText}>{locationError}</Text>
-              )}
               <Pressable
                 style={[styles.urgentToggle, urgent && styles.urgentToggleOn]}
                 onPress={() => setUrgent((u) => !u)}
                 testID="urgent-toggle"
               >
-                <Text style={[styles.urgentToggleText, urgent && styles.urgentToggleTextOn]}>
+                <Text
+                  style={[
+                    styles.urgentToggleText,
+                    urgent && styles.urgentToggleTextOn,
+                  ]}
+                >
                   Urgent
                 </Text>
               </Pressable>
-              <Pressable style={[styles.button, styles.done]} onPress={handleAdd} testID="add-task-btn">
+              <Pressable
+                style={[styles.button, styles.done]}
+                onPress={handleAdd}
+                testID="add-task-btn"
+              >
                 <Text style={styles.buttonText}>ADD</Text>
               </Pressable>
+              <Image
+                source={BANNER_IMAGES[bannerIndex]}
+                style={styles.bannerImage}
+                resizeMode="contain"
+              />
             </View>
           ) : (
-            <Pressable style={styles.addTrigger} onPress={() => setShowInput(true)} testID="add-task-trigger">
-              <Text style={styles.addTriggerText}>+ Add task</Text>
-            </Pressable>
+            <>
+              <Pressable
+                style={styles.addTrigger}
+                onPress={() => setShowInput(true)}
+                testID="add-task-trigger"
+              >
+                <Text style={styles.addTriggerText}>+ Add task</Text>
+              </Pressable>
+              <Image
+                source={BANNER_IMAGES[bannerIndex]}
+                style={styles.bannerImage}
+                resizeMode="contain"
+              />
+            </>
           )}
-          <Pressable
-            style={styles.testNotifTrigger}
-            onPress={async () => {
-              log('Test notification tapped');
-              try {
-                log('Step 1: Checking notification permission');
-                const { status } = await Notifications.getPermissionsAsync();
-                log('Step 2: Current permission status = ' + status);
-                if (status !== 'granted') {
-                  log('Step 3: Permission not granted, requesting...');
-                  const { status: s } = await Notifications.requestPermissionsAsync();
-                  log('Step 4: Request result = ' + s);
-                  if (s !== 'granted') {
-                    log('FAILED: User denied notification permission');
-                    return;
-                  }
-                }
-                log('Step 5: Scheduling notification (trigger: null = show now)');
-                const id = await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: 'Next',
-                    body: 'Test notification',
-                    sound: true,
-                    ...(Platform.OS === 'android' && { channelId: 'reminders' }),
-                  },
-                  trigger: null,
-                });
-                log('Step 6: Notification scheduled, id=' + id);
-                log('SUCCESS: Notification should appear in status bar');
-              } catch (e) {
-                log('ERROR: ' + String(e));
-              }
-            }}
-          >
-            <Text style={styles.historyTriggerText}>Test notification</Text>
-          </Pressable>
           <Pressable
             style={styles.historyTrigger}
             onPress={() => setShowHistory((h) => !h)}
             testID="history-trigger"
           >
             <Text style={styles.historyTriggerText}>
-              {showHistory ? 'Hide' : 'Show'} history ({completed.length})
+              {showHistory ? "Hide" : "Show"} history ({completed.length})
             </Text>
           </Pressable>
-          <LogBox />
           {showHistory && completed.length > 0 && (
             <View style={styles.history}>
               {completed.slice(0, 20).map((t) => (
@@ -288,7 +283,7 @@ export default function App() {
                   <Text style={styles.historyEmoji}>✓</Text>
                   <Text style={styles.historyTask}>{t.instruction}</Text>
                   <Text style={styles.historyDate}>
-                    {t.completedAt ? formatDate(t.completedAt) : ''}
+                    {t.completedAt ? formatDate(t.completedAt) : ""}
                   </Text>
                 </View>
               ))}
@@ -296,17 +291,6 @@ export default function App() {
           )}
         </View>
       </ScrollView>
-      {showMapOverlay && mapInitialRegion && (
-        <MapOverlay
-          initialRegion={mapInitialRegion}
-          onSelect={(addr, coords) => {
-            setLocationAddress(addr);
-            setLocationCoords(coords);
-            setShowMapOverlay(false);
-          }}
-          onCancel={() => setShowMapOverlay(false)}
-        />
-      )}
     </KeyboardAvoidingView>
   );
 }
@@ -314,52 +298,37 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: "#0f0f0f",
   },
   content: {
     flex: 1,
     padding: 24,
     paddingTop: 60,
     maxWidth: 400,
-    width: '100%',
-    alignSelf: 'center',
+    width: "100%",
+    alignSelf: "center",
   },
   label: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
     letterSpacing: 1,
     marginBottom: 16,
   },
   instruction: {
     fontSize: 28,
-    fontWeight: '500',
-    color: '#fff',
+    fontWeight: "500",
+    color: "#fff",
     lineHeight: 38,
     marginBottom: 8,
   },
-  locationHint: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 24,
-  },
-  locationLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#dc2626',
-    marginTop: -8,
-  },
   empty: {
     fontSize: 20,
-    color: '#444',
+    color: "#444",
     marginBottom: 32,
   },
   actions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   button: {
@@ -367,31 +336,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 8,
     minWidth: 100,
-    alignItems: 'center',
+    alignItems: "center",
   },
   done: {
-    backgroundColor: '#22c55e',
+    backgroundColor: "#22c55e",
   },
   snooze: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: "#444",
   },
   buttonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
+    fontWeight: "600",
+    color: "#fff",
   },
   snoozeText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#888',
+    fontWeight: "600",
+    color: "#888",
   },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
   taskHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 8,
   },
@@ -399,7 +368,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   urgentBadge: {
-    backgroundColor: '#dc2626',
+    backgroundColor: "#dc2626",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -407,8 +376,8 @@ const styles = StyleSheet.create({
   },
   urgentText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: "700",
+    color: "#fff",
     letterSpacing: 0.5,
   },
   inputSection: {
@@ -417,51 +386,54 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: "#1a1a1a",
     borderRadius: 8,
     paddingVertical: 14,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#fff',
+    color: "#fff",
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: "#333",
   },
   addTrigger: {
     marginTop: 32,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: "#333",
     borderRadius: 8,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   addTriggerText: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
+  },
+  bannerImage: {
+    width: "100%",
+    height: 220,
+    marginTop: 24,
+    borderRadius: 8,
+    overflow: "hidden",
   },
   urgentToggle: {
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: "#333",
     borderRadius: 8,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   urgentToggleOn: {
-    borderColor: '#dc2626',
-    backgroundColor: '#dc262620',
+    borderColor: "#dc2626",
+    backgroundColor: "#dc262620",
   },
   urgentToggleText: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
   },
   urgentToggleTextOn: {
-    color: '#dc2626',
-    fontWeight: '600',
-  },
-  testNotifTrigger: {
-    marginTop: 24,
-    paddingVertical: 8,
+    color: "#dc2626",
+    fontWeight: "600",
   },
   historyTrigger: {
     marginTop: 8,
@@ -469,18 +441,18 @@ const styles = StyleSheet.create({
   },
   historyTriggerText: {
     fontSize: 13,
-    color: '#555',
+    color: "#555",
   },
   history: {
     marginTop: 12,
     gap: 8,
   },
   historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: "#1a1a1a",
     borderRadius: 8,
   },
   historyEmoji: {
@@ -489,12 +461,12 @@ const styles = StyleSheet.create({
   },
   historyTask: {
     fontSize: 14,
-    color: '#aaa',
+    color: "#aaa",
     flex: 1,
   },
   historyDate: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
     marginLeft: 8,
   },
 });
