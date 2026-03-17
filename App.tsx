@@ -45,16 +45,16 @@ const BANNER_IMAGES = [
 const DONE_SOUND = require("./assets/do-it/done-sound.mp3");
 
 const MOTIVATION_PHRASES = [
-  "Your husband is proud of you.",
-  "Being your husband is my greatest honor, but watching the woman you've become is my greatest joy. I don't just love you; I am in awe of you.",
-  "The world sees your grace, but I see your strength. I am so deeply proud to stand by your side and call myself your husband.",
-  "You are my greatest pride. Every day, you give me a thousand new reasons to be proud that I am yours.",
-  "I see the things you do when no one is looking—the kindness, the resilience, the heart. Your husband sees it all, and he couldn't be prouder.",
+  "Carol, Your husband is proud of you.",
+  "Carol, Being your husband is my greatest honor, but watching the woman you've become is my greatest joy. I don't just love you; I am in awe of you.",
+  "Carol, The world sees your grace, but I see your strength. I am so deeply proud to stand by your side and call myself your husband.",
+  "Carol, You are my greatest pride. Every day, you give me a thousand new reasons to be proud that I am yours.",
+  "Carol, I see the things you do when no one is looking—the kindness, the resilience, the heart. Your husband sees it all, and he couldn't be prouder.",
   "Carol, you are the breath in my lungs and the quiet in my soul. If my heart stops, I will find peace; but if I lose you, the world itself would break, and no hand could ever mend the pieces of who I used to be.",
 ];
 
 function getPhraseForNow(): string {
-  const idx = Math.floor(Date.now() / 5000) % MOTIVATION_PHRASES.length;
+  const idx = Math.floor(Date.now() / 7000) % MOTIVATION_PHRASES.length;
   return MOTIVATION_PHRASES[idx];
 }
 
@@ -68,11 +68,13 @@ export default function App() {
   const [showInput, setShowInput] = useState(false);
   const [refreshing, setRefreshing] = useState(0);
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [phraseIndex, setPhraseIndex] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => {
       setBannerIndex((i) => (i + 1) % BANNER_IMAGES.length);
-    }, 5000);
+      setPhraseIndex((i) => (i + 1) % MOTIVATION_PHRASES.length);
+    }, 7000);
     return () => clearInterval(id);
   }, []);
 
@@ -126,7 +128,7 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!nextTask) refresh();
-    }, 5000);
+    }, 7000);
     return () => clearInterval(interval);
   }, [nextTask, refresh]);
 
@@ -250,6 +252,9 @@ export default function App() {
                 style={styles.bannerImage}
                 resizeMode="contain"
               />
+              <Text style={styles.phraseText}>
+                {MOTIVATION_PHRASES[phraseIndex]}
+              </Text>
             </View>
           ) : (
             <>
@@ -265,6 +270,9 @@ export default function App() {
                 style={styles.bannerImage}
                 resizeMode="contain"
               />
+              <Text style={styles.phraseText}>
+                {MOTIVATION_PHRASES[phraseIndex]}
+              </Text>
             </>
           )}
           <Pressable
@@ -414,6 +422,13 @@ const styles = StyleSheet.create({
     marginTop: 24,
     borderRadius: 8,
     overflow: "hidden",
+  },
+  phraseText: {
+    fontSize: 14,
+    color: "#888",
+    marginTop: 12,
+    fontStyle: "italic",
+    textAlign: "center",
   },
   urgentToggle: {
     paddingVertical: 10,
